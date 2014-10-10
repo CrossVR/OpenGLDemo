@@ -12,6 +12,9 @@
 #define LEFT_EYE 0
 #define RIGHT_EYE 1
 
+int window_width = 1024;
+int window_height = 768;
+
 bool draggingLeftButton = false;
 bool inFullscreen = false;
 unsigned long last_idle_time;
@@ -31,10 +34,39 @@ gmtl::Matrix44f		modelViewProjectionMatrix[2];
 int frameCount = 0;
 unsigned long lastFrameRate;
 
+GLuint color, depth, fbo;
+
+void initFBO()
+{
+	glGenTextures(1, &color);
+	glGenTextures(1, &depth);
+	glGenFramebuffers(1, &fbo);
+
+	glBindTexture(GL_TEXTURE_2D_ARRAY, color);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA, window_width, window_height, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+	glBindTexture(GL_TEXTURE_2D_ARRAY, depth);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT24, window_width, window_height, 2, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, color, 0);
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depth, 0);
+
+	GLenum e = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+	if (e != GL_FRAMEBUFFER_COMPLETE)
+		printf("There is a problem with the FBO\n");
+}
+
 void reshape(GLint width, GLint height)
 {
-	glViewportIndexedf(LEFT_EYE, 0, 0, width / 2.0, height);
-	glViewportIndexedf(RIGHT_EYE, width / 2.0, 0, width / 2.0, height);
+	window_width = width;
+	window_height = height;
 
 	GLdouble fW, fH, zNear, eyeSep, eyeOff, focalLength;
 	eyeSep = 0.65;
@@ -46,6 +78,11 @@ void reshape(GLint width, GLint height)
 
 	projectionMatrix[LEFT_EYE] = gmtl::setFrustum<float>(projectionMatrix[LEFT_EYE], -fW + eyeOff, fH, fW + eyeOff, -fH, 1.0f, 1000.0f);
 	projectionMatrix[RIGHT_EYE] = gmtl::setFrustum<float>(projectionMatrix[RIGHT_EYE], -fW - eyeOff, fH, fW - eyeOff, -fH, 1.0f, 1000.0f);
+
+	glDeleteFramebuffers(1, &fbo);
+	glDeleteTextures(1, &color);
+	glDeleteTextures(1, &depth);
+	initFBO();
 }
 
 
@@ -97,6 +134,7 @@ void initGL()
 	shader->setUniformInt("s_texture", 0);
 	glClearColor(0.0, 0.0, 0.1, 1.0);
 
+	initFBO();
 }
 
 void display()
@@ -106,6 +144,8 @@ void display()
 	// Set up viewing transformation, looking down -Z axis
 
 	gmtl::identity(modelViewMatrix);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
 	//camera
 	modelViewMatrix *= gmtl::makeTrans<gmtl::Matrix44f>(gmtl::Vec3f(0, 0, -75));
@@ -127,6 +167,26 @@ void display()
 	shader->setUniformMatrix4("modelViewMatrix", modelViewMatrix);
 
 	model->draw();
+
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
+	glViewport(0, 0, window_width / 2, window_height);
+	glBindImageTexture(GL_TEXTURE_2D, color, 0, GL_TRUE, LEFT_EYE, GL_READ_ONLY, GL_RGBA);
+	glBegin(GL_QUADS);
+	glVertex3f(-10.0f, 10.0f, 0.0f);
+	glVertex3f(10.0f, 10.0f, 0.0f);
+	glVertex3f(10.0f, -10.0f, 0.0f);
+	glVertex3f(-10.0f, -10.0f, 0.0f);
+	glEnd();
+
+	glViewport(window_width / 2, 0, window_width / 2, window_height);
+	glBindImageTexture(GL_TEXTURE_2D, color, 0, GL_TRUE, RIGHT_EYE, GL_READ_ONLY, GL_RGBA);
+	glBegin(GL_QUADS);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(-1.0f, -1.0f, 0.0f);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(1.0f, -1.0f, 0.0f);
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(1.0f, 1.0f, 0.0f);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(-1.0f, 1.0f, 0.0f);
+	glEnd();
 
 	glutSwapBuffers();
 	frameCount++;
@@ -158,7 +218,7 @@ int main(int argc, char** argv)
 {
   // GLUT Window Initialization:
   glutInit (&argc, argv);
-  glutInitWindowSize (1024, 768);
+  glutInitWindowSize (window_width, window_height);
   glutInitDisplayMode ( GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
   glutCreateWindow ("OpenGL Shader Demo");
   // Initialize OpenGL graphics state

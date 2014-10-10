@@ -24,7 +24,7 @@ void main(void) {
 		f_lightDir = v_lightDir[i];
 
 		gl_Position = modelViewProjectionMatrix[gl_InvocationID] * gl_in[i].gl_Position;
-		gl_ViewportIndex = gl_InvocationID;
+		gl_Layer = gl_InvocationID;
 		EmitVertex();
 	}
 	EndPrimitive();
